@@ -87,8 +87,7 @@ koennen Sie den gewuenschten Mandanten mit `-PrimaryDomain` auswaehlen.
    auf `.ps1.txt`.
 6. Legen Sie die gleiche Skriptdatei auch auf dem Zielsystem ab.
 
-Die Anleitung ist zusaetzlich in der Skripthilfe enthalten. Im Repository liegt
-weiterhin nur die PowerShell-Datei.
+Die Anleitung ist auch als README.md im Repository enthalten.
 
 ## 4. PowerShell oeffnen und vorbereiten
 
