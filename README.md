@@ -1,4 +1,4 @@
-# NoSpamProxy: S/MIME-Zertifikate exportieren und importieren
+# NoSpamProxy: S/MIME- und CA-Zertifikate exportieren und importieren
 
 ## 1. Was macht das Skript?
 
@@ -9,6 +9,8 @@ NoSpamProxy-Systemen, zum Beispiel bei einer Migration.
   passwortgeschützte PFX-Dateien.
 - Auf Wunsch exportiert es zusätzlich gültige **externe öffentliche**
   S/MIME-Zertifikate als CER-Dateien.
+- Mit `-IncludeCA` exportiert es zusätzlich aktuell gültige
+  **Root- und Intermediate-CA-Zertifikate** als CER-Dateien ohne private Schlüssel.
 - Es importiert diese Dateien wieder in ein anderes NoSpamProxy-System.
 - Es erstellt bei jedem Start eine Protokolldatei neben dem Skript.
 
@@ -17,8 +19,9 @@ internen Benutzer werden nicht als externe öffentliche Zertifikate exportiert
 oder importiert.
 
 **Wichtig für die Migration:** Das Skript überträgt keine Benutzerkonten,
-eigenen Domains, Einstellungen, Vertrauensstellungen oder sonstige
-Konfigurationen. Richten Sie die eigenen Domains auf dem Zielsystem vor dem
+eigenen Domains, individuellen Vertrauenseinstellungen oder sonstige
+Konfigurationen. CA-Zertifikate werden nur mit `-IncludeCA` übertragen.
+Richten Sie die eigenen Domains auf dem Zielsystem vor dem
 Import ein. Prüfen Sie nach dem Import die Benutzerzuordnungen und Einstellungen
 im Zielsystem.
 
@@ -43,8 +46,7 @@ können Sie den gewünschten Mandanten mit `-PrimaryDomain` auswählen.
 
 ## 3. Skript herunterladen
 
-1. Melden Sie sich bei GitHub mit einem Konto an, das Zugriff auf das private
-   Repository hat.
+1. Öffnen Sie GitHub im Browser. Das Repository ist öffentlich zugänglich.
 2. Öffnen Sie
    [NoSpamProxy-Key-import-export](https://github.com/sbe-nsp/NoSpamProxy-Key-import-export).
 3. Öffnen Sie die Datei `NoSpamProxy-Key-import-export.ps1`.
@@ -210,10 +212,39 @@ Vorhandene Exportdateien werden **nicht überschrieben**. Für einen erneuten
 vollständigen Export verwenden Sie am einfachsten einen neuen, leeren
 Exportordner, zum Beispiel `C:\NSP-Migration\Export-2`.
 
+### 5.5 Root- und Intermediate-CA-Zertifikate mit exportieren
+
+Wenn Sie zusätzlich die Zertifikate der Zertifizierungsstellen übertragen
+möchten, ergänzen Sie `-IncludeCA`:
+
+```powershell
+.\NoSpamProxy-Key-import-export.ps1 -Operation Export -Path "C:\NSP-Migration\Export-MitCA" -IncludeCA
+```
+
+Dieser Aufruf exportiert die internen Schlüsselpaare und zusätzlich die
+aktuell gültigen CA-Zertifikate aus den NoSpamProxy-Speichern `Root` und
+`Intermediate`. Root-Zertifikate liegen anschließend im Unterordner `Root`,
+Zwischenzertifikate im Unterordner `Intermediate`. Die CA-Dateien enthalten
+keine privaten Schlüssel und benötigen kein eigenes Passwort. Die
+PFX-Passwortabfrage für die internen Schlüsselpaare bleibt bestehen.
+
+Für interne Schlüsselpaare, externe öffentliche S/MIME-Zertifikate und
+CA-Zertifikate zusammen:
+
+```powershell
+.\NoSpamProxy-Key-import-export.ps1 -Operation Export -Path "C:\NSP-Migration\Export-Komplett" -IncludePublic -IncludeCA
+```
+
+Abgelaufene und noch nicht gültige CA-Zertifikate werden nicht exportiert.
+CA-Zertifikate benötigen keine Mailadresse; der Filter für eigene Domains
+und die S/MIME-Schlüsselverwendung werden auf sie nicht angewendet.
+Ohne `-IncludeCA` werden keine CA-Zertifikate verarbeitet.
+
 ## 6. Dateien auf das Zielsystem übertragen
 
 1. Übertragen Sie den gesamten Exportordner auf das Zielsystem. Die
-   Unterordner `Private` und, falls verwendet, `Public` müssen erhalten bleiben.
+   Unterordner `Private` sowie, falls verwendet, `Public`, `Root` und
+   `Intermediate` müssen erhalten bleiben.
 2. Legen Sie ihn dort zum Beispiel unter `C:\NSP-Migration\Import` ab.
 3. Übertragen Sie auch das Skript auf das Zielsystem, falls noch nicht geschehen.
 4. Stellen Sie sicher, dass die eigenen Domains auf dem Zielsystem eingerichtet
@@ -234,6 +265,13 @@ C:\NSP-Migration\
 ```
 
 Wurde ohne `-IncludePublic` exportiert, ist kein `Public`-Ordner erforderlich.
+Bei einem Export mit `-IncludeCA` kommen die Ordner `Root` und `Intermediate`
+mit den jeweiligen CER-Dateien hinzu. Übertragen Sie beide Ordner auch dann,
+wenn einer davon leer ist.
+
+Geben Sie beim Import immer den **übergeordneten Ordner** mit `-Path` an,
+zum Beispiel `C:\NSP-Migration\Import`, nicht dessen Unterordner `Private`,
+`Root` oder `Intermediate`.
 
 ## 7. Import auf dem Zielsystem
 
@@ -281,6 +319,39 @@ Bereits im entsprechenden NoSpamProxy-Speicher vorhandene Zertifikate werden
 übersprungen und im Log als `Bereits vorhanden` aufgeführt. Dateien, die beim
 Import nicht mehr zeitlich gültig sind oder kein passendes S/MIME-Zertifikat
 darstellen, werden ebenfalls übersprungen und protokolliert.
+
+### 7.4 Root- und Intermediate-CA-Zertifikate mit importieren
+
+Wenn beim Export `-IncludeCA` verwendet wurde, übertragen Sie auch die Ordner
+`Root` und `Intermediate`. Starten Sie dann auf dem Zielsystem:
+
+```powershell
+.\NoSpamProxy-Key-import-export.ps1 -Operation Import -Path "C:\NSP-Migration\Import" -IncludeCA
+```
+
+Mit zusätzlichen externen öffentlichen S/MIME-Zertifikaten:
+
+```powershell
+.\NoSpamProxy-Key-import-export.ps1 -Operation Import -Path "C:\NSP-Migration\Import" -IncludePublic -IncludeCA
+```
+
+Das Skript verarbeitet zuerst `Root`, danach `Intermediate` und anschließend
+die internen Schlüsselpaare und gegebenenfalls externen S/MIME-Zertifikate.
+NoSpamProxy ordnet die importierten CA-Zertifikate selbst dem passenden
+Speicher zu. Das Skript prüft nach jedem neuen CA-Import, ob das Zertifikat
+im erwarteten NoSpamProxy-Speicher vorhanden ist.
+
+Mit `-IncludeCA` müssen beide CA-Unterordner vorhanden sein; sie dürfen leer
+sein. Bereits vorhandene CA-Zertifikate im jeweiligen Speicher werden
+übersprungen. Inzwischen abgelaufene oder noch nicht gültige CA-Zertifikate
+werden ebenfalls übersprungen und protokolliert. Nicht passende Zertifikate
+oder eine unerwartete Speicherzuordnung werden als Fehler gemeldet. Ein
+bereits ausgeführter Import wird bei solchen Fehlern nicht automatisch
+rückgängig gemacht; prüfen Sie das Log und das Zielsystem.
+
+Diese Funktion importiert in die NoSpamProxy-Zertifikatsverwaltung, nicht
+in die Windows-Zertifikatsspeicher. Eigene Domains und das PFX-Passwort sind
+weiterhin erforderlich, da die internen Schlüsselpaare mitverarbeitet werden.
 
 ## 8. Weitere Beispiele
 
@@ -395,7 +466,8 @@ exportieren.
 
 Das Skript berücksichtigt nur zum Ausführungszeitpunkt gültige Zertifikate.
 Beim Export werden die Speicher `My` und, für öffentliche Zertifikate,
-`TrustedPeople` berücksichtigt. Für S/MIME muss entweder die entsprechende
+`TrustedPeople` berücksichtigt. Mit `-IncludeCA` kommen `Root` und
+`Intermediate` hinzu. Für S/MIME muss entweder die entsprechende
 erweiterte Schlüsselverwendung erlaubt sein oder keine einschränkende
 Erweiterung vorhanden sein.
 
@@ -408,9 +480,13 @@ Sperrlistenprüfung.
 
 ## 11. Version und Patchnotes
 
-- **Version:** 1.0.1
-- **Build:** 20261127.2
+- **Version:** 1.1.0
+- **Build:** 20261127.3
 - **Datum:** 27.11.2026
+- **Patchnotes 1.1.0:** Optionalen Export und Import aktuell gültiger Root-
+  und Intermediate-CA-Zertifikate mit `-IncludeCA` ergänzt. CA-Zertifikate
+  werden als CER-Dateien getrennt abgelegt und vor den Benutzerzertifikaten
+  importiert. Die Ziel-Speicherzuordnung wird nach neuen CA-Importen geprüft.
 - **Patchnotes 1.0.1:** Ausführliche Einsteigeranleitung mit Beispielen,
   Migrationsablauf, Voraussetzungen und Fehlerbehebung ergänzt. Die
   Skriptfunktionen bleiben unverändert.

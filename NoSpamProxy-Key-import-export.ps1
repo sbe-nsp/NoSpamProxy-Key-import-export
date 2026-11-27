@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Exportiert und importiert S/MIME-Zertifikate fuer eine NoSpamProxy-Migration.
+  Exportiert und importiert S/MIME- und optional CA-Zertifikate fuer eine NoSpamProxy-Migration.
 .DESCRIPTION
   Exportiert gueltige interne Schluesselpaare aus dem Speicher My als
   passwortgeschuetzte PFX-Dateien. Optional werden gueltige externe S/MIME-
@@ -8,12 +8,15 @@
   interne Zertifikate und Zertifikate mit internen Mailadressen sind davon ausgeschlossen.
   Importiert werden die Dateien aus den entsprechenden Unterordnern Private und
   Public. Bereits vorhandene Zertifikate werden beim Import uebersprungen.
+  Mit -IncludeCA werden zusaetzlich aktuell gueltige Root- und Intermediate-
+  CA-Zertifikate ohne private Schluessel als CER-Dateien verarbeitet.
 
   Voraussetzungen: Windows PowerShell 5.1 oder PowerShell 7 unter Windows,
   installiertes NoSpamProxy-PowerShell-Modul, API-Zugriff und konfigurierte
   eigene Domains. Bei Provider-Modus muss der Zielmandant angegeben werden.
-  Die Benutzerkonten, Domains, Vertrauen und sonstige Konfiguration werden nicht
-  migriert. Die eigenen Domains muessen vor dem Import konfiguriert sein.
+  Die Benutzerkonten, Domains, individuellen Vertrauenseinstellungen und
+  sonstige Konfiguration werden nicht migriert. Die eigenen Domains muessen
+  vor dem Import konfiguriert sein.
   Das PFX-Passwort wird einmal abgefragt und nicht gespeichert.
   Bereits vorhandene Exportdateien werden nicht ueberschrieben.
   Ein eigenes Log wird bei jedem Start neben diesem Skript erstellt.
@@ -25,7 +28,7 @@
   den Vertrauensstatus oder eine Sperrlistenpruefung.
   --- Ausfuehrliche Anleitung ---
 
-# NoSpamProxy: S/MIME-Zertifikate exportieren und importieren
+# NoSpamProxy: S/MIME- und CA-Zertifikate exportieren und importieren
 
 ## 1. Was macht das Skript?
 
@@ -36,6 +39,8 @@ NoSpamProxy-Systemen, zum Beispiel bei einer Migration.
   passwortgeschuetzte PFX-Dateien.
 - Auf Wunsch exportiert es zusaetzlich gueltige **externe oeffentliche**
   S/MIME-Zertifikate als CER-Dateien.
+- Mit `-IncludeCA` exportiert es zusaetzlich aktuell gueltige
+  **Root- und Intermediate-CA-Zertifikate** als CER-Dateien ohne private Schluessel.
 - Es importiert diese Dateien wieder in ein anderes NoSpamProxy-System.
 - Es erstellt bei jedem Start eine Protokolldatei neben dem Skript.
 
@@ -44,8 +49,9 @@ internen Benutzer werden nicht als externe oeffentliche Zertifikate exportiert
 oder importiert.
 
 **Wichtig fuer die Migration:** Das Skript uebertraegt keine Benutzerkonten,
-eigenen Domains, Einstellungen, Vertrauensstellungen oder sonstige
-Konfigurationen. Richten Sie die eigenen Domains auf dem Zielsystem vor dem
+eigenen Domains, individuellen Vertrauenseinstellungen oder sonstige
+Konfigurationen. CA-Zertifikate werden nur mit `-IncludeCA` uebertragen.
+Richten Sie die eigenen Domains auf dem Zielsystem vor dem
 Import ein. Pruefen Sie nach dem Import die Benutzerzuordnungen und Einstellungen
 im Zielsystem.
 
@@ -70,8 +76,7 @@ koennen Sie den gewuenschten Mandanten mit `-PrimaryDomain` auswaehlen.
 
 ## 3. Skript herunterladen
 
-1. Melden Sie sich bei GitHub mit einem Konto an, das Zugriff auf das private
-   Repository hat.
+1. Oeffnen Sie GitHub im Browser. Das Repository ist oeffentlich zugaenglich.
 2. Oeffnen Sie
    [NoSpamProxy-Key-import-export](https://github.com/sbe-nsp/NoSpamProxy-Key-import-export).
 3. Oeffnen Sie die Datei `NoSpamProxy-Key-import-export.ps1`.
@@ -87,7 +92,7 @@ koennen Sie den gewuenschten Mandanten mit `-PrimaryDomain` auswaehlen.
    auf `.ps1.txt`.
 6. Legen Sie die gleiche Skriptdatei auch auf dem Zielsystem ab.
 
-Die Anleitung ist auch als README.md im Repository enthalten.
+Die Anleitung ist zusaetzlich in der Skripthilfe enthalten.
 
 ## 4. PowerShell oeffnen und vorbereiten
 
@@ -237,10 +242,39 @@ Vorhandene Exportdateien werden **nicht ueberschrieben**. Fuer einen erneuten
 vollstaendigen Export verwenden Sie am einfachsten einen neuen, leeren
 Exportordner, zum Beispiel `C:\NSP-Migration\Export-2`.
 
+### 5.5 Root- und Intermediate-CA-Zertifikate mit exportieren
+
+Wenn Sie zusaetzlich die Zertifikate der Zertifizierungsstellen uebertragen
+moechten, ergaenzen Sie `-IncludeCA`:
+
+```powershell
+.\NoSpamProxy-Key-import-export.ps1 -Operation Export -Path "C:\NSP-Migration\Export-MitCA" -IncludeCA
+```
+
+Dieser Aufruf exportiert die internen Schluesselpaare und zusaetzlich die
+aktuell gueltigen CA-Zertifikate aus den NoSpamProxy-Speichern `Root` und
+`Intermediate`. Root-Zertifikate liegen anschliessend im Unterordner `Root`,
+Zwischenzertifikate im Unterordner `Intermediate`. Die CA-Dateien enthalten
+keine privaten Schluessel und benoetigen kein eigenes Passwort. Die
+PFX-Passwortabfrage fuer die internen Schluesselpaare bleibt bestehen.
+
+Fuer interne Schluesselpaare, externe oeffentliche S/MIME-Zertifikate und
+CA-Zertifikate zusammen:
+
+```powershell
+.\NoSpamProxy-Key-import-export.ps1 -Operation Export -Path "C:\NSP-Migration\Export-Komplett" -IncludePublic -IncludeCA
+```
+
+Abgelaufene und noch nicht gueltige CA-Zertifikate werden nicht exportiert.
+CA-Zertifikate benoetigen keine Mailadresse; der Filter fuer eigene Domains
+und die S/MIME-Schluesselverwendung werden auf sie nicht angewendet.
+Ohne `-IncludeCA` werden keine CA-Zertifikate verarbeitet.
+
 ## 6. Dateien auf das Zielsystem uebertragen
 
 1. Uebertragen Sie den gesamten Exportordner auf das Zielsystem. Die
-   Unterordner `Private` und, falls verwendet, `Public` muessen erhalten bleiben.
+   Unterordner `Private` sowie, falls verwendet, `Public`, `Root` und
+   `Intermediate` muessen erhalten bleiben.
 2. Legen Sie ihn dort zum Beispiel unter `C:\NSP-Migration\Import` ab.
 3. Uebertragen Sie auch das Skript auf das Zielsystem, falls noch nicht geschehen.
 4. Stellen Sie sicher, dass die eigenen Domains auf dem Zielsystem eingerichtet
@@ -261,6 +295,13 @@ C:\NSP-Migration\
 ```
 
 Wurde ohne `-IncludePublic` exportiert, ist kein `Public`-Ordner erforderlich.
+Bei einem Export mit `-IncludeCA` kommen die Ordner `Root` und `Intermediate`
+mit den jeweiligen CER-Dateien hinzu. Uebertragen Sie beide Ordner auch dann,
+wenn einer davon leer ist.
+
+Geben Sie beim Import immer den **uebergeordneten Ordner** mit `-Path` an,
+zum Beispiel `C:\NSP-Migration\Import`, nicht dessen Unterordner `Private`,
+`Root` oder `Intermediate`.
 
 ## 7. Import auf dem Zielsystem
 
@@ -308,6 +349,39 @@ Bereits im entsprechenden NoSpamProxy-Speicher vorhandene Zertifikate werden
 uebersprungen und im Log als `Bereits vorhanden` aufgefuehrt. Dateien, die beim
 Import nicht mehr zeitlich gueltig sind oder kein passendes S/MIME-Zertifikat
 darstellen, werden ebenfalls uebersprungen und protokolliert.
+
+### 7.4 Root- und Intermediate-CA-Zertifikate mit importieren
+
+Wenn beim Export `-IncludeCA` verwendet wurde, uebertragen Sie auch die Ordner
+`Root` und `Intermediate`. Starten Sie dann auf dem Zielsystem:
+
+```powershell
+.\NoSpamProxy-Key-import-export.ps1 -Operation Import -Path "C:\NSP-Migration\Import" -IncludeCA
+```
+
+Mit zusaetzlichen externen oeffentlichen S/MIME-Zertifikaten:
+
+```powershell
+.\NoSpamProxy-Key-import-export.ps1 -Operation Import -Path "C:\NSP-Migration\Import" -IncludePublic -IncludeCA
+```
+
+Das Skript verarbeitet zuerst `Root`, danach `Intermediate` und anschliessend
+die internen Schluesselpaare und gegebenenfalls externen S/MIME-Zertifikate.
+NoSpamProxy ordnet die importierten CA-Zertifikate selbst dem passenden
+Speicher zu. Das Skript prueft nach jedem neuen CA-Import, ob das Zertifikat
+im erwarteten NoSpamProxy-Speicher vorhanden ist.
+
+Mit `-IncludeCA` muessen beide CA-Unterordner vorhanden sein; sie duerfen leer
+sein. Bereits vorhandene CA-Zertifikate im jeweiligen Speicher werden
+uebersprungen. Inzwischen abgelaufene oder noch nicht gueltige CA-Zertifikate
+werden ebenfalls uebersprungen und protokolliert. Nicht passende Zertifikate
+oder eine unerwartete Speicherzuordnung werden als Fehler gemeldet. Ein
+bereits ausgefuehrter Import wird bei solchen Fehlern nicht automatisch
+rueckgaengig gemacht; pruefen Sie das Log und das Zielsystem.
+
+Diese Funktion importiert in die NoSpamProxy-Zertifikatsverwaltung, nicht
+in die Windows-Zertifikatsspeicher. Eigene Domains und das PFX-Passwort sind
+weiterhin erforderlich, da die internen Schluesselpaare mitverarbeitet werden.
 
 ## 8. Weitere Beispiele
 
@@ -422,7 +496,8 @@ exportieren.
 
 Das Skript beruecksichtigt nur zum Ausfuehrungszeitpunkt gueltige Zertifikate.
 Beim Export werden die Speicher `My` und, fuer oeffentliche Zertifikate,
-`TrustedPeople` beruecksichtigt. Fuer S/MIME muss entweder die entsprechende
+`TrustedPeople` beruecksichtigt. Mit `-IncludeCA` kommen `Root` und
+`Intermediate` hinzu. Fuer S/MIME muss entweder die entsprechende
 erweiterte Schluesselverwendung erlaubt sein oder keine einschraenkende
 Erweiterung vorhanden sein.
 
@@ -435,9 +510,13 @@ Sperrlistenpruefung.
 
 ## 11. Version und Patchnotes
 
-- **Version:** 1.0.1
-- **Build:** 20261127.2
+- **Version:** 1.1.0
+- **Build:** 20261127.3
 - **Datum:** 27.11.2026
+- **Patchnotes 1.1.0:** Optionalen Export und Import aktuell gueltiger Root-
+  und Intermediate-CA-Zertifikate mit `-IncludeCA` ergaenzt. CA-Zertifikate
+  werden als CER-Dateien getrennt abgelegt und vor den Benutzerzertifikaten
+  importiert. Die Ziel-Speicherzuordnung wird nach neuen CA-Importen geprueft.
 - **Patchnotes 1.0.1:** Ausfuehrliche Einsteigeranleitung mit Beispielen,
   Migrationsablauf, Voraussetzungen und Fehlerbehebung ergaenzt. Die
   Skriptfunktionen bleiben unveraendert.
@@ -450,6 +529,9 @@ Sperrlistenpruefung.
   Verzeichnis fuer den Export beziehungsweise mit den zu importierenden Dateien.
 .PARAMETER IncludePublic
   Zusaetzlich externe oeffentliche S/MIME-Zertifikate verarbeiten.
+.PARAMETER IncludeCA
+  Zusaetzlich aktuell gueltige CA-Zertifikate aus Root und Intermediate
+  als CER-Dateien exportieren beziehungsweise importieren.
 .PARAMETER Credential
   Optionales PSCredential fuer Connect-Nsp. Ohne Angabe erfolgt eine Abfrage.
 .PARAMETER PfxPassword
@@ -466,9 +548,11 @@ Sperrlistenpruefung.
 .EXAMPLE
   .\NoSpamProxy-Key-import-export.ps1 -Operation Import -Path C:\Migration -IncludePublic -IgnoreServerCertificateErrors
 .NOTES
-  Version: 1.0.1
-  Build: 20261127.2
+  Version: 1.1.0
+  Build: 20261127.3
   Datum: 2026-11-27
+  Patchnotes 1.1.0: Optionaler Export und Import gueltiger Root- und
+  Intermediate-CA-Zertifikate ueber -IncludeCA; Pruefung des Import-Zielspeichers.
   Patchnotes 1.0.1: Ausfuehrliche Einsteigeranleitung mit Beispielen ergaenzt.
   Patchnotes 1.0.0: Erstversion mit PFX-Export/-Import, optionalen externen
   S/MIME-Zertifikaten, Domainfilterung und Protokollierung.
@@ -483,6 +567,7 @@ param(
     [string] $Path,
 
     [switch] $IncludePublic,
+    [switch] $IncludeCA,
     [pscredential] $Credential,
     [securestring] $PfxPassword,
     [uri] $Url,
@@ -603,6 +688,27 @@ function Test-CurrentlyValid {
     return ($From.ToUniversalTime() -le $now -and $To.ToUniversalTime() -gt $now)
 }
 
+function Assert-CaCertificate {
+    param(
+        [System.Security.Cryptography.X509Certificates.X509Certificate2] $Certificate,
+        [string] $Store
+    )
+    foreach ($extension in $Certificate.Extensions) {
+        if ($extension.Oid.Value -eq '2.5.29.19') {
+            $constraints = [System.Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new()
+            $constraints.CopyFrom($extension)
+            if (-not $constraints.CertificateAuthority) { throw 'Zertifikat ist kein CA-Zertifikat.' }
+            return
+        }
+    }
+    # Legacy root certificates can lack the Basic Constraints extension.
+    if ($Store -ne 'Root' -or
+        [Convert]::ToBase64String($Certificate.SubjectName.RawData) -cne
+        [Convert]::ToBase64String($Certificate.IssuerName.RawData)) {
+        throw 'CA-Zertifikat besitzt keine passende Basic-Constraints-Erweiterung.'
+    }
+}
+
 function Get-SummaryAddresses {
     param($Summary)
     foreach ($mail in $Summary.MailAddresses) {
@@ -626,7 +732,7 @@ function Save-NewFile {
 }
 
 try {
-    Write-Log "Start: $Operation; IncludePublic=$IncludePublic"
+    Write-Log "Start: $Operation; IncludePublic=$IncludePublic; IncludeCA=$IncludeCA"
     $Path = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
     Import-Module NoSpamProxy -ErrorAction Stop
     if (-not $Credential) { $Credential = Get-Credential -Message 'NoSpamProxy-Anmeldung' }
@@ -667,10 +773,17 @@ try {
     if ($Operation -eq 'Export') {
         [void] [System.IO.Directory]::CreateDirectory($privatePath)
         if ($IncludePublic) { [void] [System.IO.Directory]::CreateDirectory($publicPath) }
+        $stores = @('My', 'TrustedPeople')
+        if ($IncludeCA) {
+            $stores += @('Root', 'Intermediate')
+            foreach ($store in @('Root', 'Intermediate')) {
+                [void] [System.IO.Directory]::CreateDirectory((Join-Path $Path $store))
+            }
+        }
         $exportedPublic = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
         $plainPassword = [System.Net.NetworkCredential]::new('', $PfxPassword).Password
         try {
-            foreach ($store in @('My', 'TrustedPeople')) {
+            foreach ($store in $stores) {
                 if ($store -eq 'TrustedPeople' -and -not $IncludePublic) { continue }
                 foreach ($summary in @(Get-AllCertificates $store)) {
                     if (-not (Test-CurrentlyValid $summary.ValidFrom $summary.ValidTo)) { continue }
@@ -684,7 +797,16 @@ try {
                         $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new([byte[]] $export[0].Certificate)
                         try {
                             if ($cert.Thumbprint -ne $thumbprint) { throw 'Fingerabdruck des exportierten Zertifikats stimmt nicht ueberein.' }
-                            if (-not (Test-CurrentlyValid $cert.NotBefore $cert.NotAfter) -or -not (Test-SmimeCertificate $cert)) { continue }
+                            if (-not (Test-CurrentlyValid $cert.NotBefore $cert.NotAfter)) { continue }
+                            if ($store -in @('Root', 'Intermediate')) {
+                                Assert-CaCertificate $cert $store
+                                $file = Join-Path (Join-Path $Path $store) ($thumbprint + '.cer')
+                                Save-NewFile $file ($cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+                                $processed++
+                                Write-Log "Exportiert: $thumbprint ($store)"
+                                continue
+                            }
+                            if (-not (Test-SmimeCertificate $cert)) { continue }
                             $addresses = @($summaryAddresses) + @(Get-CertificateAddresses $cert)
                             $internal = Test-Internal $thumbprint $addresses
                             if ($store -eq 'TrustedPeople' -and $internal) { continue }
@@ -727,8 +849,18 @@ try {
         if ($IncludePublic) {
             foreach ($summary in @(Get-AllCertificates 'TrustedPeople')) { [void] $existingPublic.Add([string] $summary.Thumbprint) }
         }
-        $groups = @(@{ Directory = $privatePath; Extension = '*.pfx'; Private = $true; Existing = $existingPrivate })
-        if ($IncludePublic) { $groups += @{ Directory = $publicPath; Extension = '*.cer'; Private = $false; Existing = $existingPublic } }
+        $groups = @()
+        if ($IncludeCA) {
+            foreach ($store in @('Root', 'Intermediate')) {
+                $directory = Join-Path $Path $store
+                if (-not (Test-Path -LiteralPath $directory -PathType Container)) { throw "CA-Verzeichnis fehlt: $directory" }
+                $existing = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+                foreach ($summary in @(Get-AllCertificates $store)) { [void] $existing.Add([string] $summary.Thumbprint) }
+                $groups += @{ Directory = $directory; Extension = '*.cer'; Private = $false; Existing = $existing; CA = $true; Store = $store }
+            }
+        }
+        $groups += @{ Directory = $privatePath; Extension = '*.pfx'; Private = $true; Existing = $existingPrivate; CA = $false }
+        if ($IncludePublic) { $groups += @{ Directory = $publicPath; Extension = '*.cer'; Private = $false; Existing = $existingPublic; CA = $false } }
         foreach ($group in $groups) {
             foreach ($file in @(Get-ChildItem -LiteralPath $group.Directory -Filter $group.Extension -File)) {
                 try {
@@ -740,13 +872,20 @@ try {
                     try {
                         if ($group.Private -and -not $cert.HasPrivateKey) { throw 'PFX enthaelt keinen privaten Schluessel.' }
                         if (-not $group.Private -and $cert.HasPrivateKey) { throw 'CER enthaelt unerwartet einen privaten Schluessel.' }
-                        if (-not (Test-CurrentlyValid $cert.NotBefore $cert.NotAfter) -or -not (Test-SmimeCertificate $cert)) {
+                        if (-not (Test-CurrentlyValid $cert.NotBefore $cert.NotAfter)) {
                             $skipped++
-                            Write-Log "Nicht gueltig oder kein S/MIME: $($file.Name)" 'WARN'
+                            Write-Log "Nicht zeitlich gueltig: $($file.Name)" 'WARN'
                             continue
                         }
-                        $addresses = @(Get-CertificateAddresses $cert)
-                        if (-not $group.Private) {
+                        if ($group.CA) {
+                            Assert-CaCertificate $cert $group.Store
+                        } elseif (-not (Test-SmimeCertificate $cert)) {
+                            $skipped++
+                            Write-Log "Kein S/MIME: $($file.Name)" 'WARN'
+                            continue
+                        }
+                        if (-not $group.Private -and -not $group.CA) {
+                            $addresses = @(Get-CertificateAddresses $cert)
                             if (Test-Internal $cert.Thumbprint $addresses) {
                                 $skipped++
                                 Write-Log "Internes Zertifikat nicht als Public importiert: $($file.Name)" 'WARN'
@@ -760,6 +899,13 @@ try {
                             continue
                         }
                         Import-NspCertificate -Certificate $cert -ErrorAction Stop | Out-Null
+                        if ($group.CA) {
+                            $imported = @(Get-NspCertificate -SubjectOrThumbprint $cert.Thumbprint -StoreIds $group.Store -KeyValidity All -ErrorAction Stop |
+                                Where-Object Thumbprint -eq $cert.Thumbprint)
+                            if ($imported.Count -ne 1) {
+                                throw "CA-Zertifikat nach Import nicht im erwarteten Speicher $($group.Store) gefunden."
+                            }
+                        }
                         [void] $group.Existing.Add($cert.Thumbprint)
                         $processed++
                         Write-Log "Importiert: $($cert.Thumbprint)"
