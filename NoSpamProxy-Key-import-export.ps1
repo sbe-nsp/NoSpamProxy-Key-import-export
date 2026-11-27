@@ -438,6 +438,22 @@ gewuenschte `.log`-Datei. Sie koennen sie auch mit Editor/Notepad oeffnen.
 - `[ERROR]`: Ein Fehler ist aufgetreten. Lesen Sie die Meldung in derselben
   Zeile und pruefen Sie die Abschlusszusammenfassung.
 
+Zertifikatsbezogene Meldungen enthalten zusaetzlich zum Fingerabdruck den
+**CN (Common Name)** aus dem Subject des Zertifikats, zum Beispiel:
+
+```text
+[INFO] Exportiert: <Fingerabdruck>; CN="Max Mustermann" (My)
+[INFO] Importiert: <Fingerabdruck>; CN="Example Root CA"
+[INFO] Bereits vorhanden: <Fingerabdruck>; CN="Example Intermediate CA"
+```
+
+Diese Namen sind Beispiele. Enthaelt das Zertifikat keinen CN, erscheint
+`CN="[nicht vorhanden]"`. Kann eine Datei nicht geoeffnet werden, beispielsweise
+wegen eines falschen PFX-Passworts, erscheint `CN="[nicht lesbar]"`.
+Der Name wird dann nicht aus einer anderen Datei uebernommen oder geraten.
+Bei Exportfehlern wird der CN nach Moeglichkeit aus den NoSpamProxy-Metadaten
+angezeigt. Der CN ist nicht automatisch eine E-Mail-Adresse.
+
 ## 10. Haeufige Fragen und Fehler
 
 ### "Die Datei oder der Befehl wurde nicht gefunden"
@@ -510,9 +526,12 @@ Sperrlistenpruefung.
 
 ## 11. Version und Patchnotes
 
-- **Version:** 1.1.0
-- **Build:** 20261127.3
+- **Version:** 1.1.1
+- **Build:** 20261127.4
 - **Datum:** 27.11.2026
+- **Patchnotes 1.1.1:** CN (Common Name) zusaetzlich zum Fingerabdruck in den
+  zertifikatsbezogenen Export-, Import-, Warn- und Fehlermeldungen ergaenzt.
+  Fehlende oder nicht lesbare CNs werden ausdruecklich gekennzeichnet.
 - **Patchnotes 1.1.0:** Optionalen Export und Import aktuell gueltiger Root-
   und Intermediate-CA-Zertifikate mit `-IncludeCA` ergaenzt. CA-Zertifikate
   werden als CER-Dateien getrennt abgelegt und vor den Benutzerzertifikaten
@@ -548,9 +567,11 @@ Sperrlistenpruefung.
 .EXAMPLE
   .\NoSpamProxy-Key-import-export.ps1 -Operation Import -Path C:\Migration -IncludePublic -IgnoreServerCertificateErrors
 .NOTES
-  Version: 1.1.0
-  Build: 20261127.3
+  Version: 1.1.1
+  Build: 20261127.4
   Datum: 2026-11-27
+  Patchnotes 1.1.1: Zertifikatsbezogene Logmeldungen enthalten neben dem
+  Fingerabdruck auch den Subject-CN, soweit das Zertifikat lesbar ist.
   Patchnotes 1.1.0: Optionaler Export und Import gueltiger Root- und
   Intermediate-CA-Zertifikate ueber -IncludeCA; Pruefung des Import-Zielspeichers.
   Patchnotes 1.0.1: Ausfuehrliche Einsteigeranleitung mit Beispielen ergaenzt.
@@ -583,6 +604,30 @@ function Write-Log {
     $line = '{0} [{1}] {2}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Level, $Message
     Add-Content -LiteralPath $logPath -Value $line -Encoding UTF8
     Write-Host $line
+}
+
+function Get-CertificateLogIdentity {
+    param(
+        [string] $Thumbprint,
+        [System.Security.Cryptography.X509Certificates.X500DistinguishedName] $SubjectName
+    )
+    $cn = '[nicht lesbar]'
+    if ($null -ne $SubjectName) {
+        $cn = '[nicht vorhanden]'
+        $subject = $SubjectName.Decode([System.Security.Cryptography.X509Certificates.X500DistinguishedNameFlags]::UseNewLines)
+        $pattern = '(?m)(?:^| \+ )(?<type>[^=+\r\n]+)=(?:"(?<quoted>(?:[^"]|"")*)"|(?<plain>[^\r\n]*?))(?= \+ |\r?$)'
+        foreach ($attribute in [regex]::Matches($subject, $pattern)) {
+            if ($attribute.Groups['type'].Value.Trim() -ne 'CN') { continue }
+            if ($attribute.Groups['quoted'].Success) {
+                $cn = $attribute.Groups['quoted'].Value.Replace('""', '"')
+            } else {
+                $cn = $attribute.Groups['plain'].Value
+            }
+            break
+        }
+    }
+    $cn = [regex]::Replace($cn, '[\r\n\t]', ' ').Replace('"', '""')
+    return '{0}; CN="{1}"' -f $Thumbprint, $cn
 }
 
 function Get-AllCertificates {
@@ -788,7 +833,11 @@ try {
                 foreach ($summary in @(Get-AllCertificates $store)) {
                     if (-not (Test-CurrentlyValid $summary.ValidFrom $summary.ValidTo)) { continue }
                     $thumbprint = [string] $summary.Thumbprint
+                    $identity = Get-CertificateLogIdentity $thumbprint
                     try {
+                        if ($summary.SubjectDistinguishedName) {
+                            $identity = Get-CertificateLogIdentity $thumbprint ([System.Security.Cryptography.X509Certificates.X500DistinguishedName]::new($summary.SubjectDistinguishedName))
+                        }
                         if ($thumbprint -notmatch '^[0-9A-Fa-f]+$') { throw 'Ungueltiger Fingerabdruck.' }
                         $summaryAddresses = @(Get-SummaryAddresses $summary)
                         if ($store -eq 'TrustedPeople' -and (Test-Internal $thumbprint $summaryAddresses)) { continue }
@@ -796,6 +845,7 @@ try {
                         if ($export.Count -ne 1 -or -not $export[0].Certificate) { throw 'Oeffentlicher Zertifikatexport lieferte kein eindeutiges Ergebnis.' }
                         $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new([byte[]] $export[0].Certificate)
                         try {
+                            $identity = Get-CertificateLogIdentity $thumbprint $cert.SubjectName
                             if ($cert.Thumbprint -ne $thumbprint) { throw 'Fingerabdruck des exportierten Zertifikats stimmt nicht ueberein.' }
                             if (-not (Test-CurrentlyValid $cert.NotBefore $cert.NotAfter)) { continue }
                             if ($store -in @('Root', 'Intermediate')) {
@@ -803,7 +853,7 @@ try {
                                 $file = Join-Path (Join-Path $Path $store) ($thumbprint + '.cer')
                                 Save-NewFile $file ($cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert))
                                 $processed++
-                                Write-Log "Exportiert: $thumbprint ($store)"
+                                Write-Log "Exportiert: $identity ($store)"
                                 continue
                             }
                             if (-not (Test-SmimeCertificate $cert)) { continue }
@@ -831,11 +881,11 @@ try {
                                 Save-NewFile $file ([byte[]] $pfx[0].Certificate)
                             }
                             $processed++
-                            Write-Log "Exportiert: $thumbprint ($store)"
+                            Write-Log "Exportiert: $identity ($store)"
                         } finally { $cert.Dispose() }
                     } catch {
                         $failures++
-                        Write-Log "Export fehlgeschlagen: $thumbprint ($store): $($_.Exception.Message)" 'ERROR'
+                        Write-Log "Export fehlgeschlagen: $identity ($store): $($_.Exception.Message)" 'ERROR'
                     }
                 }
             }
@@ -863,6 +913,7 @@ try {
         if ($IncludePublic) { $groups += @{ Directory = $publicPath; Extension = '*.cer'; Private = $false; Existing = $existingPublic; CA = $false } }
         foreach ($group in $groups) {
             foreach ($file in @(Get-ChildItem -LiteralPath $group.Directory -Filter $group.Extension -File)) {
+                $identity = Get-CertificateLogIdentity $file.BaseName
                 try {
                     if ($group.Private) {
                         $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($file.FullName, $PfxPassword, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
@@ -870,32 +921,33 @@ try {
                         $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($file.FullName)
                     }
                     try {
+                        $identity = Get-CertificateLogIdentity $cert.Thumbprint $cert.SubjectName
                         if ($group.Private -and -not $cert.HasPrivateKey) { throw 'PFX enthaelt keinen privaten Schluessel.' }
                         if (-not $group.Private -and $cert.HasPrivateKey) { throw 'CER enthaelt unerwartet einen privaten Schluessel.' }
                         if (-not (Test-CurrentlyValid $cert.NotBefore $cert.NotAfter)) {
                             $skipped++
-                            Write-Log "Nicht zeitlich gueltig: $($file.Name)" 'WARN'
+                            Write-Log "Nicht zeitlich gueltig: $identity" 'WARN'
                             continue
                         }
                         if ($group.CA) {
                             Assert-CaCertificate $cert $group.Store
                         } elseif (-not (Test-SmimeCertificate $cert)) {
                             $skipped++
-                            Write-Log "Kein S/MIME: $($file.Name)" 'WARN'
+                            Write-Log "Kein S/MIME: $identity" 'WARN'
                             continue
                         }
                         if (-not $group.Private -and -not $group.CA) {
                             $addresses = @(Get-CertificateAddresses $cert)
                             if (Test-Internal $cert.Thumbprint $addresses) {
                                 $skipped++
-                                Write-Log "Internes Zertifikat nicht als Public importiert: $($file.Name)" 'WARN'
+                                Write-Log "Internes Zertifikat nicht als Public importiert: $identity" 'WARN'
                                 continue
                             }
                             if ($addresses.Count -eq 0) { throw 'Keine Mailadresse ermittelbar; externe Zuordnung nicht moeglich.' }
                         }
                         if ($group.Existing.Contains($cert.Thumbprint)) {
                             $skipped++
-                            Write-Log "Bereits vorhanden: $($cert.Thumbprint)"
+                            Write-Log "Bereits vorhanden: $identity"
                             continue
                         }
                         Import-NspCertificate -Certificate $cert -ErrorAction Stop | Out-Null
@@ -908,11 +960,11 @@ try {
                         }
                         [void] $group.Existing.Add($cert.Thumbprint)
                         $processed++
-                        Write-Log "Importiert: $($cert.Thumbprint)"
+                        Write-Log "Importiert: $identity"
                     } finally { $cert.Dispose() }
                 } catch {
                     $failures++
-                    Write-Log "Import fehlgeschlagen: $($file.Name): $($_.Exception.Message)" 'ERROR'
+                    Write-Log "Import fehlgeschlagen: $($file.Name) ($identity): $($_.Exception.Message)" 'ERROR'
                 }
             }
         }

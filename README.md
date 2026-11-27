@@ -408,6 +408,22 @@ gewünschte `.log`-Datei. Sie können sie auch mit Editor/Notepad öffnen.
 - `[ERROR]`: Ein Fehler ist aufgetreten. Lesen Sie die Meldung in derselben
   Zeile und prüfen Sie die Abschlusszusammenfassung.
 
+Zertifikatsbezogene Meldungen enthalten zusätzlich zum Fingerabdruck den
+**CN (Common Name)** aus dem Subject des Zertifikats, zum Beispiel:
+
+```text
+[INFO] Exportiert: <Fingerabdruck>; CN="Max Mustermann" (My)
+[INFO] Importiert: <Fingerabdruck>; CN="Example Root CA"
+[INFO] Bereits vorhanden: <Fingerabdruck>; CN="Example Intermediate CA"
+```
+
+Diese Namen sind Beispiele. Enthält das Zertifikat keinen CN, erscheint
+`CN="[nicht vorhanden]"`. Kann eine Datei nicht geöffnet werden, beispielsweise
+wegen eines falschen PFX-Passworts, erscheint `CN="[nicht lesbar]"`.
+Der Name wird dann nicht aus einer anderen Datei übernommen oder geraten.
+Bei Exportfehlern wird der CN nach Möglichkeit aus den NoSpamProxy-Metadaten
+angezeigt. Der CN ist nicht automatisch eine E-Mail-Adresse.
+
 ## 10. Häufige Fragen und Fehler
 
 ### „Die Datei oder der Befehl wurde nicht gefunden“
@@ -480,9 +496,12 @@ Sperrlistenprüfung.
 
 ## 11. Version und Patchnotes
 
-- **Version:** 1.1.0
-- **Build:** 20261127.3
+- **Version:** 1.1.1
+- **Build:** 20261127.4
 - **Datum:** 27.11.2026
+- **Patchnotes 1.1.1:** CN (Common Name) zusätzlich zum Fingerabdruck in den
+  zertifikatsbezogenen Export-, Import-, Warn- und Fehlermeldungen ergänzt.
+  Fehlende oder nicht lesbare CNs werden ausdrücklich gekennzeichnet.
 - **Patchnotes 1.1.0:** Optionalen Export und Import aktuell gültiger Root-
   und Intermediate-CA-Zertifikate mit `-IncludeCA` ergänzt. CA-Zertifikate
   werden als CER-Dateien getrennt abgelegt und vor den Benutzerzertifikaten
