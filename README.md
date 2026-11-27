@@ -130,6 +130,24 @@ Get-Help .\NoSpamProxy-Key-import-export.ps1 -Full
 
 ## 5. Export auf dem Quellsystem
 
+Stellen Sie zuerst in der geöffneten PowerShell eine Verbindung zu NoSpamProxy
+her:
+
+```powershell
+Connect-Nsp -IgnoreServerCertificateErrors -Credential (Get-Credential)
+```
+
+Geben Sie im Anmeldefenster Ihre NoSpamProxy-Zugangsdaten ein. Verwenden Sie
+diesen Befehl auch auf dem Zielsystem, wenn Sie dort eine neue PowerShell für
+den Import öffnen.
+
+Das Skript stellt beim Start selbst eine neue Verbindung her und fragt deshalb
+erneut nach den Zugangsdaten. Die Option `-IgnoreServerCertificateErrors` des
+obigen Befehls gilt nicht automatisch für diese neue Verbindung: Falls nötig,
+geben Sie die Option auch beim Skriptaufruf an, wie in Abschnitt 5.3 gezeigt.
+Bei einem entfernten System oder im Provider-Modus beachten Sie zusätzlich
+`-Url` beziehungsweise `-PrimaryDomain` in Abschnitt 8.
+
 ### 5.1 Nur interne Schlüsselpaare exportieren
 
 Führen Sie auf dem **Quellsystem** nach Abschnitt 4 folgenden Befehl aus:
